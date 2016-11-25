@@ -1,0 +1,8 @@
+[package]
+name = "rgit"
+version = "0.1.0"
+authors = ["Toby Moore <tmo@trustpilot.com>"]
+
+[dependencies]
+rust-crypto = "0.2.36"
+flate2 = "0.2.13"
