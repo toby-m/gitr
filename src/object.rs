@@ -59,13 +59,13 @@ impl Object {
             let header = str::from_utf8(&header_bytes)?;
             let parts = header.split_whitespace().collect::<Vec<&str>>();
             assert!(parts.len() == 2, "Unable to read header");
-            
+
             let length = parts[1].parse::<usize>()?;
             let object_type = match parts[0] {
-                "blob" => ObjectType::Blob,
+                "blob"   => ObjectType::Blob,
                 "commit" => ObjectType::Commit,
-                "tree" => ObjectType::Tree,
-                _ => return Err(Box::new(ParseError))
+                "tree"   => ObjectType::Tree,
+                _        => return Err(Box::new(ParseError))
             };
             let offset = &parts[0].len() + &parts[1].len() + 2;
 

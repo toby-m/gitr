@@ -102,27 +102,26 @@ fn lookup_ref(mut path : PathBuf, r : Ref) -> Result<String, Box<Error>> {
     };
 
     path.push(r);
-    println!("reading path {:?}", path);
-    let (data, l) = file::read_file(&path)?;
-    println!("read {} bytes", l);
+    let (data, _) = file::read_file(&path)?;
     let contents = str::from_utf8(&data).expect("Ref contents didn't read as UTF8");
     let trimmed = contents.lines().next().expect("Couldn't take a line out of the ref file");
     return Ok(trimmed.to_owned());
 }
 
 fn main() {
-    for argument in env::args().skip(1) {
-        let path = Path::new(&argument);
-        let (buf, size) = file::read_file(path).unwrap();
-        let(content, hash) = pack_blob(&buf, size);
-        let compressed = file::compress(&content).unwrap();
-
-        file::write_object(".", &compressed, &hash).unwrap();
-    }
-
     let cwd = env::current_dir().unwrap();
     let path_result = cwd.to_str().unwrap();
     let git_dir = *find_git_dir(path_result).expect("Not it git dir?");
+
+    for argument in env::args().skip(1) {
+        let obj = match read_object(git_dir.clone(), &argument) {
+            Err(e)  => panic!("Failed to read object with hash {}, error: {}", argument, e),
+            Ok(obj) => obj
+        };
+
+        println!("Found {} {} ", obj.object_type, argument);
+        println!("");
+    }
 
     let reference = find_head(git_dir.clone()).expect("Didn't get a reference from HEAD");
     let commit = lookup_ref(git_dir.clone(), reference).expect("Didn't find the ref");
