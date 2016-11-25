@@ -3,34 +3,18 @@
 extern crate crypto;
 extern crate flate2;
 
+mod file;
+mod object;
+
 use crypto::sha1::Sha1;
 use crypto::digest::Digest;
 
 use std::env;
-use std::fs;
-use std::fs::File;
-use std::io::Result;
 use std::io::prelude::*;
 use std::path::{Path,PathBuf};
+use std::error::Error;
 
-
-fn compress(input : &[u8]) -> std::io::Result<Vec<u8>> {
-    use flate2::Compression;
-    use flate2::write::ZlibEncoder;
-
-    let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
-    let _ = e.write(input);
-    return e.finish();
-}
-
-fn decompress(input : &[u8]) -> Vec<u8> {
-    use flate2::read::ZlibDecoder;
-
-    let mut decoder = ZlibDecoder::new(&input[..]);
-    let mut ret = Vec::new();
-    decoder.read_to_end(&mut ret).unwrap();
-    return ret;
-}
+use object::{Object};
 
 fn pack_blob(content : &[u8], len : usize) -> (Vec<u8>, String) {
     let blah = format!("blob {}\0", len);
@@ -46,62 +30,31 @@ fn pack_blob(content : &[u8], len : usize) -> (Vec<u8>, String) {
     return (pack, hasher.result_str());
 }
 
-fn write_file(base_dir : &str, content : &[u8], hash : &str) -> std::io::Result<()> {
-    let dir = &hash[0..2];
-    let file = &hash[2..];
-    let mut path = PathBuf::from(base_dir);
-
-    path.push(dir);
-    fs::create_dir_all(&path)?;
-
-    path.push(file);
-    let mut file = File::create(&path)?;
-    file.write_all(content)?;
-    return Ok(());
-}
-
-fn read_file(path : &Path) -> std::io::Result<([u8;4096], usize)> {
-    let mut file = File::open(path)?;
-    let mut buf = [0; 4096];
-    let size = file.read(&mut buf)?;
-    return Ok((buf, size));
-}
-
-fn read_blob(base_dir : &str, hash : &str) -> std::io::Result<usize> {
-    use std::str;
-
+fn read_object(base_dir : &str, hash : &str) -> Result<Object, Box<Error>> {
     let dir = &hash[0..2];
     let file = &hash[2..];
     let mut path = PathBuf::from(base_dir);
     path.push(dir);
     path.push(file);
 
-    let (file_content, _) = read_file(&path)?;
-    let data = decompress(&file_content);
-
-    let header = data[5..].iter().take_while(|&&c| c != 0).map(|&c| c).collect::<Vec<u8>>();
-    let len_str = str::from_utf8(&header).unwrap();
-    let length = len_str.parse::<usize>().unwrap();
-    return Ok(length);
+    let (file_content, _) = file::read_file(&path)?;
+    let data = file::decompress(&file_content)?;
+    return object::Object::from_raw(data.into_boxed_slice());
 }
 
 fn main() {
     for argument in env::args().skip(1) {
-        println!("Attempting to read {}", argument);
         let path = Path::new(&argument);
-        let (buf, size) = read_file(path).unwrap();
-        println!("Got {} bytes", size);
-
+        let (buf, size) = file::read_file(path).unwrap();
         let(content, hash) = pack_blob(&buf, size);
+        let compressed = file::compress(&content).unwrap();
 
-        println!("Got hash {}", hash);
-        let compressed = compress(&content).unwrap();
-
-        write_file(".", &compressed, &hash).unwrap();
+        file::write_object(".", &compressed, &hash).unwrap();
     }
 
-    let len = read_blob(".git/objects", "5626abf0f72e58d7a153368ba57db4c673c0e171").unwrap();
-    println!("Read head with length {}", len);
+    let obj = read_object(".git/objects", "4bd19e65663b008a7bc37643b53a834fa747a5bd").unwrap();
+    println!("Found {} with length {}", obj.object_type, obj.length);
+    std::io::stdout().write(obj.data()).unwrap();
 }
 
 #[test]
@@ -116,15 +69,4 @@ fn hash_blob_works_for_simple_input2() {
     let s = "one\n";
     let (_, hex) = pack_blob(s.as_bytes(), s.len());
     assert_eq!(hex, "5626abf0f72e58d7a153368ba57db4c673c0e171");
-}
-
-#[test]
-fn compress_decompress_round_trip() {
-    use std::str;
-
-    let input = "the quick brown fox jumps over the lazy dog";
-    let compressed = compress(input.as_bytes()).unwrap();
-    let decompressed = decompress(&compressed);
-    let output = str::from_utf8(&decompressed).unwrap();
-    assert_eq!(output, input);
 }
