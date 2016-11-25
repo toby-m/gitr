@@ -9,6 +9,7 @@ use crypto::digest::Digest;
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::io::Result;
 use std::io::prelude::*;
 use std::path::{Path,PathBuf};
 
@@ -66,6 +67,24 @@ fn read_file(path : &Path) -> std::io::Result<([u8;4096], usize)> {
     return Ok((buf, size));
 }
 
+fn read_blob(base_dir : &str, hash : &str) -> std::io::Result<usize> {
+    use std::str;
+
+    let dir = &hash[0..2];
+    let file = &hash[2..];
+    let mut path = PathBuf::from(base_dir);
+    path.push(dir);
+    path.push(file);
+
+    let (file_content, _) = read_file(&path)?;
+    let data = decompress(&file_content);
+
+    let header = data[5..].iter().take_while(|&&c| c != 0).map(|&c| c).collect::<Vec<u8>>();
+    let len_str = str::from_utf8(&header).unwrap();
+    let length = len_str.parse::<usize>().unwrap();
+    return Ok(length);
+}
+
 fn main() {
     for argument in env::args().skip(1) {
         println!("Attempting to read {}", argument);
@@ -80,6 +99,9 @@ fn main() {
 
         write_file(".", &compressed, &hash).unwrap();
     }
+
+    let len = read_blob(".git/objects", "5626abf0f72e58d7a153368ba57db4c673c0e171").unwrap();
+    println!("Read head with length {}", len);
 }
 
 #[test]
