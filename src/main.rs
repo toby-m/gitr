@@ -1,21 +1,25 @@
 #![allow(dead_code)]
 
+extern crate byteorder;
 extern crate crypto;
 extern crate flate2;
 
 mod file;
 mod object;
+mod pack;
+mod error;
 
+use error::ShitError;
 use crypto::sha1::Sha1;
 use crypto::digest::Digest;
 
 use std::str;
 use std::env;
-use std::io::prelude::*;
-use std::path::{Path,PathBuf};
+use std::path::{PathBuf};
 use std::error::Error;
 
 use object::{Object};
+use pack::{read_pack};
 
 fn pack_blob(content : &[u8], len : usize) -> (Vec<u8>, String) {
     let blah = format!("blob {}\0", len);
@@ -65,18 +69,6 @@ enum Ref {
     Hash(String)
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ShitError;
-impl std::fmt::Display for ShitError {
-    fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Failed to specify error")
-    }
-}
-impl Error for ShitError {
-    fn description(&self) -> &str { return "Failed to specify error" }
-    fn cause(&self) -> Option<&Error> { return None; }
-}
-
 fn find_head(mut path : PathBuf) -> Result<Ref, Box<Error>> {
     path.push("HEAD");
     let (data, _) = file::read_file(&path)?;
@@ -92,7 +84,7 @@ fn find_head(mut path : PathBuf) -> Result<Ref, Box<Error>> {
         return Ok(Ref::Hash(r.to_owned()));
     }
 
-    return Err(Box::new(ShitError))
+    return Err(Box::new(ShitError::empty()))
 }
 
 fn lookup_ref(mut path : PathBuf, r : Ref) -> Result<String, Box<Error>> {
@@ -127,9 +119,15 @@ fn main() {
     let commit = lookup_ref(git_dir.clone(), reference).expect("Didn't find the ref");
 
     println!("HEAD is currently at commit '{}'", commit);
-    let obj = read_object(git_dir.clone(), &commit).expect("Unable to read object file");
-    println!("Found {} with length {}", obj.object_type, obj.length);
-    std::io::stdout().write(obj.data()).unwrap();
+    let pack_ids = read_pack(git_dir.clone(), "pack-1ead2983baaf360ce0f2baddfb77992e2e7ae51b").expect("Couldn't read packfile");
+
+    for i in pack_ids {
+        println!("{}", i);
+    }
+
+    //let obj = read_object(git_dir.clone(), &commit).expect("Unable to read object file");
+    //println!("Found {} with length {}", obj.object_type, obj.length);
+    //std::io::stdout().write(obj.data()).unwrap();
 }
 
 #[test]
